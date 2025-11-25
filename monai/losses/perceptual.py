@@ -88,7 +88,8 @@ class PerceptualLoss(nn.Module):
 
         if (spatial_dims == 2 or is_fake_3d) and "medicalnet_" in network_type:
             raise ValueError(
-                "MedicalNet networks are only compatible with ``spatial_dims=3``.Argument is_fake_3d must be set to False."
+                "MedicalNet networks are only compatible with ``spatial_dims=3``. "
+                "Argument is_fake_3d must be set to False."
             )
 
         if channel_wise and "medicalnet_" not in network_type:
@@ -96,18 +97,23 @@ class PerceptualLoss(nn.Module):
 
         if network_type.lower() not in list(PercetualNetworkType):
             raise ValueError(
-                "Unrecognised criterion entered for Adversarial Loss. Must be one in: %s" % ", ".join(PercetualNetworkType)
+                "Unrecognised criterion entered for Adversarial Loss. Must be one in: %s"
+                % ", ".join(PercetualNetworkType)
             )
 
         if cache_dir:
             torch.hub.set_dir(cache_dir)
             # raise a warning that this may change the default cache dir for all torch.hub calls
-            warnings.warn(f"Setting cache_dir to {cache_dir}, this may change the default cache dir for all torch.hub calls.")
+            warnings.warn(
+                f"Setting cache_dir to {cache_dir}, this may change the default cache dir for all torch.hub calls."
+            )
 
         self.spatial_dims = spatial_dims
         self.perceptual_function: nn.Module
         if spatial_dims == 3 and is_fake_3d is False:
-            self.perceptual_function = MedicalNetPerceptualSimilarity(net=network_type, verbose=False, channel_wise=channel_wise)
+            self.perceptual_function = MedicalNetPerceptualSimilarity(
+                net=network_type, verbose=False, channel_wise=channel_wise
+            )
         elif "radimagenet_" in network_type:
             self.perceptual_function = RadImageNetPerceptualSimilarity(net=network_type, verbose=False)
         elif network_type == "resnet50":
@@ -148,7 +154,9 @@ class PerceptualLoss(nn.Module):
 
         channel_axis = 1
         input_slices = batchify_axis(x=input, fake_3d_perm=(spatial_axis, channel_axis) + tuple(preserved_axes))
-        indices = torch.randperm(input_slices.shape[0])[: int(input_slices.shape[0] * self.fake_3d_ratio)].to(input_slices.device)
+        indices = torch.randperm(input_slices.shape[0])[: int(input_slices.shape[0] * self.fake_3d_ratio)].to(
+            input_slices.device
+        )
         input_slices = torch.index_select(input_slices, dim=0, index=indices)
         target_slices = batchify_axis(x=target, fake_3d_perm=(spatial_axis, channel_axis) + tuple(preserved_axes))
         target_slices = torch.index_select(target_slices, dim=0, index=indices)
@@ -198,7 +206,9 @@ class MedicalNetPerceptualSimilarity(nn.Module):
                 Defaults to ``False``.
     """
 
-    def __init__(self, net: str = "medicalnet_resnet10_23datasets", verbose: bool = False, channel_wise: bool = False) -> None:
+    def __init__(
+        self, net: str = "medicalnet_resnet10_23datasets", verbose: bool = False, channel_wise: bool = False
+    ) -> None:
         super().__init__()
         # Load model from Hugging Face
         self.model = self._load_medicalnet_from_hf(net)
@@ -275,7 +285,9 @@ class MedicalNetPerceptualSimilarity(nn.Module):
 
         feats_diff: torch.Tensor = (feats_input - feats_target) ** 2
         if self.channel_wise:
-            results = torch.zeros(feats_diff.shape[0], input.shape[1], feats_diff.shape[2], feats_diff.shape[3], feats_diff.shape[4])
+            results = torch.zeros(
+                feats_diff.shape[0], input.shape[1], feats_diff.shape[2], feats_diff.shape[3], feats_diff.shape[4]
+            )
             for i in range(input.shape[1]):
                 l_idx = i * feats_per_ch
                 r_idx = (i + 1) * feats_per_ch
@@ -435,10 +447,14 @@ class TorchvisionModelPerceptualSimilarity(nn.Module):
         super().__init__()
         supported_networks = ["resnet50"]
         if net not in supported_networks:
-            raise NotImplementedError(f"'net' {net} is not supported, please select a network from {supported_networks}.")
+            raise NotImplementedError(
+                f"'net' {net} is not supported, please select a network from {supported_networks}."
+            )
 
         if pretrained_path is None:
-            network = torchvision.models.resnet50(weights=torchvision.models.ResNet50_Weights.DEFAULT if pretrained else None)
+            network = torchvision.models.resnet50(
+                weights=torchvision.models.ResNet50_Weights.DEFAULT if pretrained else None
+            )
         else:
             network = torchvision.models.resnet50(weights=None)
             if pretrained is True:
