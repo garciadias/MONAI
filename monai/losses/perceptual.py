@@ -16,11 +16,13 @@ import warnings
 import torch
 import torch.nn as nn
 
+from monai.networks.nets.resnet import ResNetFeatures
 from monai.utils import optional_import
 from monai.utils.enums import StrEnum
 
 LPIPS, _ = optional_import("lpips", name="LPIPS")
 torchvision, _ = optional_import("torchvision")
+hf_hub_download, _ = optional_import("huggingface_hub", name="hf_hub_download")
 
 
 class PercetualNetworkType(StrEnum):
@@ -86,8 +88,7 @@ class PerceptualLoss(nn.Module):
 
         if (spatial_dims == 2 or is_fake_3d) and "medicalnet_" in network_type:
             raise ValueError(
-                "MedicalNet networks are only compatible with ``spatial_dims=3``."
-                "Argument is_fake_3d must be set to False."
+                "MedicalNet networks are only compatible with ``spatial_dims=3``.Argument is_fake_3d must be set to False."
             )
 
         if channel_wise and "medicalnet_" not in network_type:
@@ -95,23 +96,18 @@ class PerceptualLoss(nn.Module):
 
         if network_type.lower() not in list(PercetualNetworkType):
             raise ValueError(
-                "Unrecognised criterion entered for Adversarial Loss. Must be one in: %s"
-                % ", ".join(PercetualNetworkType)
+                "Unrecognised criterion entered for Adversarial Loss. Must be one in: %s" % ", ".join(PercetualNetworkType)
             )
 
         if cache_dir:
             torch.hub.set_dir(cache_dir)
             # raise a warning that this may change the default cache dir for all torch.hub calls
-            warnings.warn(
-                f"Setting cache_dir to {cache_dir}, this may change the default cache dir for all torch.hub calls."
-            )
+            warnings.warn(f"Setting cache_dir to {cache_dir}, this may change the default cache dir for all torch.hub calls.")
 
         self.spatial_dims = spatial_dims
         self.perceptual_function: nn.Module
         if spatial_dims == 3 and is_fake_3d is False:
-            self.perceptual_function = MedicalNetPerceptualSimilarity(
-                net=network_type, verbose=False, channel_wise=channel_wise
-            )
+            self.perceptual_function = MedicalNetPerceptualSimilarity(net=network_type, verbose=False, channel_wise=channel_wise)
         elif "radimagenet_" in network_type:
             self.perceptual_function = RadImageNetPerceptualSimilarity(net=network_type, verbose=False)
         elif network_type == "resnet50":
@@ -152,9 +148,7 @@ class PerceptualLoss(nn.Module):
 
         channel_axis = 1
         input_slices = batchify_axis(x=input, fake_3d_perm=(spatial_axis, channel_axis) + tuple(preserved_axes))
-        indices = torch.randperm(input_slices.shape[0])[: int(input_slices.shape[0] * self.fake_3d_ratio)].to(
-            input_slices.device
-        )
+        indices = torch.randperm(input_slices.shape[0])[: int(input_slices.shape[0] * self.fake_3d_ratio)].to(input_slices.device)
         input_slices = torch.index_select(input_slices, dim=0, index=indices)
         target_slices = batchify_axis(x=target, fake_3d_perm=(spatial_axis, channel_axis) + tuple(preserved_axes))
         target_slices = torch.index_select(target_slices, dim=0, index=indices)
@@ -193,29 +187,58 @@ class PerceptualLoss(nn.Module):
 class MedicalNetPerceptualSimilarity(nn.Module):
     """
     Component to perform the perceptual evaluation with the networks pretrained by Chen, et al. "Med3D: Transfer
-    Learning for 3D Medical Image Analysis". This class uses torch Hub to download the networks from
-    "Warvito/MedicalNet-models".
+    Learning for 3D Medical Image Analysis". This class downloads the pretrained weights from the Hugging Face
+    repository "MONAI/checkpoints".
 
     Args:
         net: {``"medicalnet_resnet10_23datasets"``, ``"medicalnet_resnet50_23datasets"``}
             Specifies the network architecture to use. Defaults to ``"medicalnet_resnet10_23datasets"``.
-        verbose: if false, mute messages from torch Hub load function.
+        verbose: if false, mute messages from model loading (currently unused).
         channel_wise: if True, the loss is returned per channel. Otherwise the loss is averaged over the channels.
                 Defaults to ``False``.
     """
 
-    def __init__(
-        self, net: str = "medicalnet_resnet10_23datasets", verbose: bool = False, channel_wise: bool = False
-    ) -> None:
+    def __init__(self, net: str = "medicalnet_resnet10_23datasets", verbose: bool = False, channel_wise: bool = False) -> None:
         super().__init__()
-        torch.hub._validate_not_a_forked_repo = lambda a, b, c: True
-        self.model = torch.hub.load("warvito/MedicalNet-models", model=net, verbose=verbose, trust_repo=True)
+        # Load model from Hugging Face
+        self.model = self._load_medicalnet_from_hf(net)
         self.eval()
 
         self.channel_wise = channel_wise
 
         for param in self.parameters():
             param.requires_grad = False
+
+    def _load_medicalnet_from_hf(self, net: str) -> nn.Module:
+        """Load MedicalNet model from Hugging Face hub."""
+        # Map network names to model names and file names
+        model_mapping = {
+            "medicalnet_resnet10_23datasets": ("resnet10", "medicalnet_resnet_10_23dataset.pth"),
+            "medicalnet_resnet50_23datasets": ("resnet50", "medicalnet_resnet50_23datasets.pth"),
+        }
+
+        if net not in model_mapping:
+            raise ValueError(f"Unsupported network: {net}. Choose from {list(model_mapping.keys())}")
+
+        model_name, filename = model_mapping[net]
+
+        # Download weights from Hugging Face
+        pretrained_path = hf_hub_download(repo_id="MONAI/checkpoints", filename=filename)
+
+        # Create model using MONAI's ResNetFeatures (which returns feature maps, not final classification)
+        model = ResNetFeatures(model_name=model_name, pretrained=False, spatial_dims=3, in_channels=1)
+
+        # Load the pretrained weights
+        checkpoint = torch.load(pretrained_path, map_location="cpu", weights_only=True)
+        state_dict = checkpoint.get("state_dict", checkpoint)
+
+        # Remove 'module.' prefix if present
+        state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+
+        model.load_state_dict(state_dict, strict=False)
+
+        # Wrap to return only the last feature map (pooled)
+        return MedicalNetFeaturesWrapper(model)
 
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
@@ -252,9 +275,7 @@ class MedicalNetPerceptualSimilarity(nn.Module):
 
         feats_diff: torch.Tensor = (feats_input - feats_target) ** 2
         if self.channel_wise:
-            results = torch.zeros(
-                feats_diff.shape[0], input.shape[1], feats_diff.shape[2], feats_diff.shape[3], feats_diff.shape[4]
-            )
+            results = torch.zeros(feats_diff.shape[0], input.shape[1], feats_diff.shape[2], feats_diff.shape[3], feats_diff.shape[4])
             for i in range(input.shape[1]):
                 l_idx = i * feats_per_ch
                 r_idx = (i + 1) * feats_per_ch
@@ -265,6 +286,28 @@ class MedicalNetPerceptualSimilarity(nn.Module):
         results = spatial_average_3d(results, keepdim=True)
 
         return results
+
+
+class MedicalNetFeaturesWrapper(nn.Module):
+    """Wrapper to extract and pool the last feature map from ResNetFeatures."""
+
+    def __init__(self, resnet_features_model):
+        super().__init__()
+        self.model = resnet_features_model
+
+    def forward(self, x):
+        # ResNetFeatures returns a list of feature maps at different scales
+        # We want the last one (highest level features) and pool it
+        features = self.model(x)
+
+        # Get the last feature map
+        last_features = features[-1]
+
+        # Apply average pooling to get final pooled features
+        # The avgpool layer is already part of the ResNet model
+        pooled = self.model.avgpool(last_features)
+
+        return pooled
 
 
 def spatial_average_3d(x: torch.Tensor, keepdim: bool = True) -> torch.Tensor:
@@ -287,21 +330,50 @@ class RadImageNetPerceptualSimilarity(nn.Module):
     """
     Component to perform the perceptual evaluation with the networks pretrained on RadImagenet (pretrained by Mei, et
     al. "RadImageNet: An Open Radiologic Deep Learning Research Dataset for Effective Transfer Learning"). This class
-    uses torch Hub to download the networks from "Warvito/radimagenet-models".
+    downloads the pretrained weights from the Hugging Face repository "MONAI/checkpoints".
 
     Args:
         net: {``"radimagenet_resnet50"``}
             Specifies the network architecture to use. Defaults to ``"radimagenet_resnet50"``.
-        verbose: if false, mute messages from torch Hub load function.
+        verbose: if false, mute messages from model loading (currently unused).
     """
 
     def __init__(self, net: str = "radimagenet_resnet50", verbose: bool = False) -> None:
         super().__init__()
-        self.model = torch.hub.load("Warvito/radimagenet-models", model=net, verbose=verbose, trust_repo=True)
+        self.model = self._load_radimagenet_from_hf(net)
         self.eval()
 
         for param in self.parameters():
             param.requires_grad = False
+
+    def _load_radimagenet_from_hf(self, net: str) -> nn.Module:
+        """Load RadImageNet model from Hugging Face hub."""
+        if net != "radimagenet_resnet50":
+            raise ValueError(f"Unsupported network: {net}. Only 'radimagenet_resnet50' is supported.")
+
+        # Download weights from Hugging Face
+        pretrained_path = hf_hub_download(repo_id="MONAI/checkpoints", filename="RadImageNet-ResNet50_notop.pth")
+
+        # Create ResNet50 model using torchvision
+        model = torchvision.models.resnet50(weights=None)
+
+        # Remove the final classification layer (we only need features)
+        model = nn.Sequential(*list(model.children())[:-1])
+
+        # Load the pretrained weights
+        state_dict = torch.load(pretrained_path, map_location="cpu", weights_only=True)
+
+        # The state dict might have a different structure, adjust as needed
+        # Try to load with strict=False to handle any mismatches
+        try:
+            model.load_state_dict(state_dict, strict=False)
+        except Exception:
+            # If the state dict is wrapped, unwrap it
+            if "state_dict" in state_dict:
+                state_dict = state_dict["state_dict"]
+            model.load_state_dict(state_dict, strict=False)
+
+        return model
 
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
@@ -363,14 +435,10 @@ class TorchvisionModelPerceptualSimilarity(nn.Module):
         super().__init__()
         supported_networks = ["resnet50"]
         if net not in supported_networks:
-            raise NotImplementedError(
-                f"'net' {net} is not supported, please select a network from {supported_networks}."
-            )
+            raise NotImplementedError(f"'net' {net} is not supported, please select a network from {supported_networks}.")
 
         if pretrained_path is None:
-            network = torchvision.models.resnet50(
-                weights=torchvision.models.ResNet50_Weights.DEFAULT if pretrained else None
-            )
+            network = torchvision.models.resnet50(weights=torchvision.models.ResNet50_Weights.DEFAULT if pretrained else None)
         else:
             network = torchvision.models.resnet50(weights=None)
             if pretrained is True:
