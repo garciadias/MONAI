@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import torch
 
@@ -60,6 +61,13 @@ class TestHuggingFaceLoadingPerceptualLoss(unittest.TestCase):
 
         self.assertEqual(result.shape, torch.Size([]))
         self.assertIsInstance(result.item(), float)
+
+    def test_checksum_failure(self):
+        """Test that a RuntimeError is raised when checksum verification fails."""
+        with patch("monai.losses.perceptual.hf_hub_download", return_value="/tmp/dummy_path"):
+            with patch("monai.losses.perceptual.check_hash", return_value=False):
+                with self.assertRaisesRegex(RuntimeError, "Hash mismatch for file"):
+                    PerceptualLoss(spatial_dims=3, network_type="medicalnet_resnet10_23datasets", is_fake_3d=False)
 
 
 if __name__ == "__main__":

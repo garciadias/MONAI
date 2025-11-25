@@ -16,6 +16,7 @@ import warnings
 import torch
 import torch.nn as nn
 
+from monai.apps.utils import check_hash
 from monai.networks.nets.resnet import ResNetFeatures
 from monai.utils import optional_import
 from monai.utils.enums import StrEnum
@@ -223,17 +224,28 @@ class MedicalNetPerceptualSimilarity(nn.Module):
         """Load MedicalNet model from Hugging Face hub."""
         # Map network names to model names and file names
         model_mapping = {
-            "medicalnet_resnet10_23datasets": ("resnet10", "medicalnet_resnet_10_23dataset.pth"),
-            "medicalnet_resnet50_23datasets": ("resnet50", "medicalnet_resnet50_23datasets.pth"),
+            "medicalnet_resnet10_23datasets": (
+                "resnet10",
+                "medicalnet_resnet_10_23dataset.pth",
+                "afa8055f3e47f4a18239495d92a7abc587902c69c31c743de2b2784653b72605",
+            ),
+            "medicalnet_resnet50_23datasets": (
+                "resnet50",
+                "medicalnet_resnet50_23datasets.pth",
+                "ff48a62219073fb977fd3f4ddfb8dc1367f0ec156c8d6f6c37e205bd683a246e",
+            ),
         }
 
         if net not in model_mapping:
             raise ValueError(f"Unsupported network: {net}. Choose from {list(model_mapping.keys())}")
 
-        model_name, filename = model_mapping[net]
+        model_name, filename, hash_val = model_mapping[net]
 
         # Download weights from Hugging Face
         pretrained_path = hf_hub_download(repo_id="MONAI/checkpoints", filename=filename)
+
+        if not check_hash(pretrained_path, hash_val, hash_type="sha256"):
+            raise RuntimeError(f"Hash mismatch for file {filename}.")
 
         # Create model using MONAI's ResNetFeatures (which returns feature maps, not final classification)
         model = ResNetFeatures(model_name=model_name, pretrained=False, spatial_dims=3, in_channels=1)
@@ -363,8 +375,13 @@ class RadImageNetPerceptualSimilarity(nn.Module):
         if net != "radimagenet_resnet50":
             raise ValueError(f"Unsupported network: {net}. Only 'radimagenet_resnet50' is supported.")
 
+        filename = "RadImageNet-ResNet50_notop.pth"
+        hash_val = "2457479b254569e5a81ba48fee6c5b2b84b7a729e507aaa2466101aedb8e5c37"
         # Download weights from Hugging Face
-        pretrained_path = hf_hub_download(repo_id="MONAI/checkpoints", filename="RadImageNet-ResNet50_notop.pth")
+        pretrained_path = hf_hub_download(repo_id="MONAI/checkpoints", filename=filename)
+
+        if not check_hash(pretrained_path, hash_val, hash_type="sha256"):
+            raise RuntimeError(f"Hash mismatch for file {filename}.")
 
         # Create ResNet50 model using torchvision
         model = torchvision.models.resnet50(weights=None)
