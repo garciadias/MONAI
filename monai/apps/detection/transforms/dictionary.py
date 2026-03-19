@@ -125,8 +125,10 @@ class StandardizeEmptyBoxd(MapTransform, InvertibleTransform):
         super().__init__(box_keys, allow_missing_keys)
         box_ref_image_keys_tuple = ensure_tuple(box_ref_image_keys)
         if len(box_ref_image_keys_tuple) > 1:
-            raise ValueError("Please provide a single key for box_ref_image_keys.\
-                All boxes of box_keys are attached to box_ref_image_keys.")
+            raise ValueError(
+                "Please provide a single key for box_ref_image_keys.\
+                All boxes of box_keys are attached to box_ref_image_keys."
+            )
         self.box_ref_image_keys = box_ref_image_keys
 
     def __call__(self, data: Mapping[Hashable, NdarrayOrTensor]) -> dict[Hashable, NdarrayOrTensor]:
@@ -287,8 +289,10 @@ class AffineBoxToImageCoordinated(MapTransform, InvertibleTransform):
         super().__init__(box_keys, allow_missing_keys)
         box_ref_image_keys_tuple = ensure_tuple(box_ref_image_keys)
         if len(box_ref_image_keys_tuple) > 1:
-            raise ValueError("Please provide a single key for box_ref_image_keys.\
-                All boxes of box_keys are attached to box_ref_image_keys.")
+            raise ValueError(
+                "Please provide a single key for box_ref_image_keys.\
+                All boxes of box_keys are attached to box_ref_image_keys."
+            )
         self.box_ref_image_keys = box_ref_image_keys
         self.image_meta_key = image_meta_key or f"{box_ref_image_keys}_{image_meta_key_postfix}"
         self.converter_to_image_coordinate = AffineBox()
@@ -306,8 +310,10 @@ class AffineBoxToImageCoordinated(MapTransform, InvertibleTransform):
         else:
             raise ValueError(f"{meta_key} is not found. Please check whether it is the correct the image meta key.")
         if "affine" not in meta_dict:
-            raise ValueError(f"'affine' is not found in {meta_key}. \
-                Please check whether it is the correct the image meta key.")
+            raise ValueError(
+                f"'affine' is not found in {meta_key}. \
+                Please check whether it is the correct the image meta key."
+            )
         affine: NdarrayOrTensor = meta_dict["affine"]
 
         if self.affine_lps_to_ras:  # RAS affine
@@ -809,12 +815,16 @@ class ClipBoxToImaged(MapTransform):
     ) -> None:
         box_keys_tuple = ensure_tuple(box_keys)
         if len(box_keys_tuple) != 1:
-            raise ValueError("Please provide a single key for box_keys.\
-                All label_keys are attached to this box_keys.")
+            raise ValueError(
+                "Please provide a single key for box_keys.\
+                All label_keys are attached to this box_keys."
+            )
         box_ref_image_keys_tuple = ensure_tuple(box_ref_image_keys)
         if len(box_ref_image_keys_tuple) != 1:
-            raise ValueError("Please provide a single key for box_ref_image_keys.\
-                All box_keys and label_keys are attached to this box_ref_image_keys.")
+            raise ValueError(
+                "Please provide a single key for box_ref_image_keys.\
+                All box_keys and label_keys are attached to this box_ref_image_keys."
+            )
         self.label_keys = ensure_tuple(label_keys)
         super().__init__(box_keys_tuple, allow_missing_keys)
 
@@ -1081,8 +1091,10 @@ class RandCropBoxByPosNegLabeld(Randomizable, MapTransform):
 
         box_keys_tuple = ensure_tuple(box_keys)
         if len(box_keys_tuple) != 1:
-            raise ValueError("Please provide a single key for box_keys.\
-                All label_keys are attached to this box_keys.")
+            raise ValueError(
+                "Please provide a single key for box_keys.\
+                All label_keys are attached to this box_keys."
+            )
         self.box_keys = box_keys_tuple[0]
         self.label_keys = ensure_tuple(label_keys)
 
@@ -1125,11 +1137,14 @@ class RandCropBoxByPosNegLabeld(Randomizable, MapTransform):
                 extended_boxes[:, axis] = boxes_start[:, axis] - self.spatial_size[axis] // 2 + 1
                 extended_boxes[:, axis + spatial_dims] = boxes_stop[:, axis] + self.spatial_size[axis] // 2 - 1
             else:
+                # the cropper will extend an additional pixel to the left side when the size is even
+                radius_left = self.spatial_size[axis] // 2
+                radius_right = self.spatial_size[axis] - radius_left - 1  # we subtract 1 for the center voxel
                 # extended box start
-                extended_boxes[:, axis] = boxes_stop[:, axis] - self.spatial_size[axis] // 2 - 1
+                extended_boxes[:, axis] = boxes_stop[:, axis] - radius_right
                 extended_boxes[:, axis] = np.minimum(extended_boxes[:, axis], boxes_start[:, axis])
                 # extended box stop
-                extended_boxes[:, axis + spatial_dims] = extended_boxes[:, axis] + self.spatial_size[axis] // 2
+                extended_boxes[:, axis + spatial_dims] = boxes_start[:, axis] + radius_left
                 extended_boxes[:, axis + spatial_dims] = np.maximum(
                     extended_boxes[:, axis + spatial_dims], boxes_stop[:, axis]
                 )
