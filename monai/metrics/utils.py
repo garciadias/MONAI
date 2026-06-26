@@ -409,12 +409,14 @@ def get_edge_surface_distance(
     if warn_empty_gt and not edges_gt.any():
         warnings.warn(
             f"the ground truth of class {class_index if class_index != -1 else 'Unknown'} is all 0,"
-            " this may result in nan/inf distance."
+            " this may result in nan/inf distance.",
+            stacklevel=2,
         )
     if warn_empty_pred and not edges_pred.any():
         warnings.warn(
             f"the prediction of class {class_index if class_index != -1 else 'Unknown'} is all 0,"
-            " this may result in nan/inf distance."
+            " this may result in nan/inf distance.",
+            stacklevel=2,
         )
     distances_raw: tuple[torch.Tensor, torch.Tensor] | tuple[torch.Tensor]
     if symmetric:
@@ -461,7 +463,7 @@ def is_binary_tensor(input: torch.Tensor, name: str) -> None:
     if not isinstance(input, torch.Tensor):
         raise ValueError(f"{name} must be of type PyTorch Tensor.")
     if not torch.all(input.byte() == input) or input.max() > 1 or input.min() < 0:
-        warnings.warn(f"{name} should be a binarized tensor.")
+        warnings.warn(f"{name} should be a binarized tensor.", stacklevel=2)
 
 
 def remap_instance_id(pred: torch.Tensor, by_size: bool = False) -> torch.Tensor:
@@ -596,7 +598,8 @@ def compute_voronoi_regions_fast(labels: np.ndarray | torch.Tensor) -> torch.Ten
         if isinstance(labels, torch.Tensor):
             warnings.warn(
                 "Voronoi computation is running on CPU. "
-                "To accelerate, move the input tensor to GPU and ensure 'cupy' with 'cupyx.scipy.ndimage' is installed."
+                "To accelerate, move the input tensor to GPU and ensure 'cupy' with 'cupyx.scipy.ndimage' is installed.",
+                stacklevel=2,
             )
             x = labels.cpu().numpy()
         else:

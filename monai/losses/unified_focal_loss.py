@@ -67,7 +67,7 @@ class AsymmetricFocalTverskyLoss(_Loss):
 
         if self.to_onehot_y:
             if n_pred_ch == 1:
-                warnings.warn("single channel prediction, `to_onehot_y=True` ignored.")
+                warnings.warn("single channel prediction, `to_onehot_y=True` ignored.", stacklevel=2)
             else:
                 if self.ignore_index is not None and (self.ignore_index < 0 or self.ignore_index >= n_pred_ch):
                     # Replace sentinel ignore_index with a valid class before one_hot
@@ -144,7 +144,7 @@ class AsymmetricFocalLoss(_Loss):
 
         if self.to_onehot_y:
             if n_pred_ch == 1:
-                warnings.warn("single channel prediction, `to_onehot_y=True` ignored.")
+                warnings.warn("single channel prediction, `to_onehot_y=True` ignored.", stacklevel=2)
             else:
                 if self.ignore_index is not None and (self.ignore_index < 0 or self.ignore_index >= n_pred_ch):
                     # Replace sentinel ignore_index with a valid class before one_hot
@@ -255,7 +255,7 @@ class AsymmetricUnifiedFocalLoss(_Loss):
 
         orig_pred_ch = y_pred.shape[1]
         if orig_pred_ch == 1 and self.to_onehot_y:
-            warnings.warn("single channel prediction, `to_onehot_y=True` ignored.")
+            warnings.warn("single channel prediction, `to_onehot_y=True` ignored.", stacklevel=2)
         if orig_pred_ch == 1 and self.ignore_index is not None:
             warnings.warn("single channel prediction, `ignore_index` is applied to label-encoded targets.")
 
