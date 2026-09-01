@@ -66,7 +66,7 @@ jobs:
         cache: 'pip'
     - name: Install tools
       run: |
-        python -m pip install -U pip build
+        python -m pip install -U pip build twine
     - name: Build distribution
       run: |
         export HEAD_COMMIT_ID=$(git rev-parse HEAD)
@@ -90,6 +90,19 @@ jobs:
         pip install dist/*.whl
         pip list
         (cd "$(mktemp -d)" && python -c 'import monai; print(monai.__version__)')
+    - name: Publish to Test PyPI
+      # secrets are not available to workflows triggered by a pull_request from a fork, so only
+      # attempt the test publish when the PR head is a branch of Project-MONAI/MONAI itself
+      if: >-
+        github.event_name == 'pull_request' &&
+        github.repository == 'Project-MONAI/MONAI' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      run: |
+        twine upload --verbose -r testpypi dist/*
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.TEST_PYPI_TOKEN }}
+        TWINE_NON_INTERACTIVE: true
     - name: Publish to PyPI
       if: github.event_name == 'schedule'  # only publish on cron run
       uses: pypa/gh-action-pypi-publish@release/v1
